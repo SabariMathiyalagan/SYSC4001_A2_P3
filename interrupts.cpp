@@ -6,7 +6,7 @@
  */
 
 #include<interrupts.hpp>
-
+static unsigned int NEXT_PID = 1;
 std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string> trace_file, int time, std::vector<std::string> vectors, std::vector<int> delays, std::vector<external_file> external_files, PCB current, std::vector<PCB> wait_queue) {
 
     std::string trace;      //!< string to store single line of trace file
@@ -50,6 +50,25 @@ std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string
 
             ///////////////////////////////////////////////////////////////////////////////////////////
             //Add your FORK output here
+            execution += std::to_string(current_time) + ", " + std::to_string(duration_intr) + ", cloning the PCB\n";
+            current_time += duration_intr;
+
+           
+            execution += std::to_string(current_time) + ", 0, scheduler called\n";
+            execution += std::to_string(current_time) + ", 1, IRET\n";
+            current_time += 1;
+
+            
+            PCB child(NEXT_PID++, current.PID, current.program_name, current.size, -1);
+            if (!allocate_memory(&child)) {
+                std::cerr << "ERROR! Memory allocation failed for child!\n";
+            }
+            wait_queue.push_back(current);
+
+            
+            std::string current_line = trace_file[i];
+            system_status += "time: " + std::to_string(current_time) + "; current trace: " + current_line + "\n";
+            system_status += print_PCB(child, wait_queue);
 
 
 
@@ -91,7 +110,21 @@ std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string
 
             ///////////////////////////////////////////////////////////////////////////////////////////
             //With the child's trace, run the child (HINT: think recursion)
+            // Run CHILD first (recursively) with child_trace
+            auto [exec_child, status_child, time_child] =
+            simulate_trace(child_trace, current_time, vectors, delays, external_files, child, wait_queue);
 
+            execution      += exec_child;
+            system_status  += status_child;
+            current_time    = time_child;
+
+           
+            if (child.partition_number != -1) {
+                    free_memory(&child);
+                }
+
+               
+                if (!wait_queue.empty()) wait_queue.pop_back();
 
 
             ///////////////////////////////////////////////////////////////////////////////////////////
@@ -103,23 +136,7 @@ std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string
             execution += intr;
 
             ///////////////////////////////////////////////////////////////////////////////////////////
-            //Add your EXEC output here
-
-
-
-            ///////////////////////////////////////////////////////////////////////////////////////////
-
-
-            std::ifstream exec_trace_file(program_name + ".txt");
-
-            std::vector<std::string> exec_traces;
-            std::string exec_trace;
-            while(std::getline(exec_trace_file, exec_trace)) {
-                exec_traces.push_back(exec_trace);
-            }
-
-            ///////////////////////////////////////////////////////////////////////////////////////////
-            //With the exec's trace (i.e. trace of external program), run the exec (HINT: think recursion)
+           
 
 
 
@@ -177,8 +194,9 @@ int main(int argc, char** argv) {
 
     input_file.close();
 
-    write_output(execution, "execution.txt");
-    write_output(system_status, "system_status.txt");
+    write_output(execution, "output_files/execution.txt");
+    write_output(system_status, "output_files/system_status.txt");
+
 
     return 0;
 }
