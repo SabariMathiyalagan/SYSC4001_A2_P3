@@ -3,6 +3,8 @@
  * @file interrupts.cpp
  * @author Sasisekhar Govind
  * @author Sabari Mathiyalagan 101296257
+ * @author George Tzemenakis 101296691
+ *
  */
 
 #include<interrupts.hpp>
@@ -58,14 +60,12 @@ std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string
             execution += std::to_string(current_time) + ", 1, IRET\n";
             current_time += 1;
 
-            
             PCB child(NEXT_PID++, current.PID, current.program_name, current.size, -1);
             if (!allocate_memory(&child)) {
                 std::cerr << "ERROR! Memory allocation failed for child!\n";
             }
             wait_queue.push_back(current);
 
-            
             std::string current_line = trace_file[i];
             system_status += "time: " + std::to_string(current_time) + "; current trace: " + current_line + "\n";
             system_status += print_PCB(child, wait_queue);
@@ -136,7 +136,65 @@ std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string
             execution += intr;
 
             ///////////////////////////////////////////////////////////////////////////////////////////
+            //Add your EXEC output here
+            unsigned int prog_size = get_size(program_name, external_files);
+
            
+            execution += std::to_string(current_time) + ", " + std::to_string(duration_intr) + ", Program is "
+                    + std::to_string(prog_size) + " Mb large\n";
+            current_time += duration_intr;
+
+           
+            int load_ms = static_cast<int>(prog_size) * 15;
+            execution += std::to_string(current_time) + ", " + std::to_string(load_ms) + ", loading program into memory\n";
+            current_time += load_ms;
+
+            execution += std::to_string(current_time) + ", 3, marking partition as occupied\n";
+            current_time += 3;
+
+            execution += std::to_string(current_time) + ", 6, updating PCB\n";
+            current_time += 6;
+
+         
+            if(current.partition_number != -1) {
+                free_memory(&current);
+            }
+            current.program_name = program_name;
+            current.size         = prog_size;
+            allocate_memory(&current);
+
+       
+            execution += std::to_string(current_time) + ", 0, scheduler called\n";
+            execution += std::to_string(current_time) + ", 1, IRET\n";
+            current_time += 1;
+
+       
+            std::string current_line = trace_file[i];
+            system_status += "time: " + std::to_string(current_time) + "; current trace: " + current_line + "\n";
+            system_status += print_PCB(current, wait_queue);
+
+
+
+            ///////////////////////////////////////////////////////////////////////////////////////////
+
+
+            std::ifstream exec_trace_file(program_name + ".txt");
+
+            std::vector<std::string> exec_traces;
+            std::string exec_trace;
+            while(std::getline(exec_trace_file, exec_trace)) {
+                exec_traces.push_back(exec_trace);
+            }
+
+            ///////////////////////////////////////////////////////////////////////////////////////////
+            //With the exec's trace (i.e. trace of external program), run the exec (HINT: think recursion)
+            // Now execute the external program trace in this SAME (current) process
+            auto [exec_prog, status_prog, time_prog] =
+            simulate_trace(exec_traces, current_time, vectors, delays, external_files, current, wait_queue);
+
+            execution      += exec_prog;
+            system_status  += status_prog;
+            current_time    = time_prog;
 
 
 
@@ -155,7 +213,7 @@ int main(int argc, char** argv) {
     //vectors is a C++ std::vector of strings that contain the address of the ISR
     //delays  is a C++ std::vector of ints that contain the delays of each device
     //the index of these elemens is the device number, starting from 0
-    //external_files is a C++ std::vector of the struct 'external_file'. Check the struct in 
+    //external_files is a C++ std::vector of the struct 'external_file'. Check the struct in
     //interrupt.hpp to know more.
     auto [vectors, delays, external_files] = parse_args(argc, argv);
     std::ifstream input_file(argv[1]);
@@ -184,12 +242,12 @@ int main(int argc, char** argv) {
         trace_file.push_back(trace);
     }
 
-    auto [execution, system_status, _] = simulate_trace(   trace_file, 
-                                            0, 
-                                            vectors, 
+    auto [execution, system_status, _] = simulate_trace(   trace_file,
+                                            0,
+                                            vectors,
                                             delays,
-                                            external_files, 
-                                            current, 
+                                            external_files,
+                                            current,
                                             wait_queue);
 
     input_file.close();
